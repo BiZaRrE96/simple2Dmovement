@@ -23,8 +23,8 @@ public class playerInput : MonoBehaviour
     void Update()
     {
 
-        inputX = Input.GetAxis("Horizontal");
-        inputY = Input.GetAxis("Vertical");
+        inputX = Input.GetAxisRaw("Horizontal");
+        inputY = Input.GetAxisRaw("Vertical");
 
         //Aimdir
 

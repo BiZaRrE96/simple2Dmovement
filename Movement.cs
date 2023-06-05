@@ -8,7 +8,7 @@ public class Movement : MonoBehaviour
     [SerializeField] private float MaxSpeed = 10f; // Max speed obtainable by walking
     [SerializeField] private float Acceleration = 3f;
     [SerializeField] private float Deceleration = 3f;
-    [SerializeField] private float IsometricRatioCoef = 2f;
+    [SerializeField] private float IsometricRatioCoef = 1f;
 
     //initialize the grid to disable collisions for dash
     [SerializeField] private GameObject enviroment;
@@ -36,6 +36,7 @@ public class Movement : MonoBehaviour
     private float startfalltime = 1f;
     private float falltime = 1f;
     private Vector3 originalSize;
+    private float dashGracePeriod;
 
     //DASH EVENT, used to temporarily disable specific collisions
     public UnityEvent dashStart;
@@ -43,7 +44,7 @@ public class Movement : MonoBehaviour
 
     private bool bothSameDir(float x, float y)
     {
-        if ((x >= 0 && y >= 0) || (x <= 0 && y <= 0))
+        if ((x>=0 && y>=0)||(x<=0 && y <=0))
         {
             return true;
         }
@@ -89,17 +90,19 @@ public class Movement : MonoBehaviour
                 }
                 else if (!bothSameDir(movement.x, rb.velocity.x))
                 {
-                    forceToAdd = Acceleration + Deceleration;
+                    forceToAdd = Acceleration;
+                    rb.velocity = new Vector2(-rb.velocity.x,rb.velocity.y);
+                    Debug.Log("duar");
                 }
                 else
                 {
                     forceToAdd = Acceleration;
                 }
-                rb.AddForce(forceToAdd * new Vector2(movement.x, 0f));
+                rb.AddForce(forceToAdd * new Vector2(movement.x,0f));
             }
             else //no input or velocity over max
             {
-                if (Mathf.Abs(rb.velocity.x) - (Deceleration * (Time.deltaTime * Time.deltaTime)) < 0f)
+                if (Mathf.Abs(rb.velocity.x) - (Deceleration*(Time.deltaTime * Time.deltaTime)) < 0f)
                 {
                     forceToAdd = Mathf.Abs((0f - rb.velocity.x) / (Time.deltaTime * Time.deltaTime));
                 }
@@ -107,25 +110,30 @@ public class Movement : MonoBehaviour
                 {
                     forceToAdd = Deceleration;
                 }
+                if (Mathf.Abs(rb.velocity.x) < 0.2f)
+                {
+                    rb.velocity = new Vector2(0f, rb.velocity.y);
+                }
                 rb.AddForce(forceToAdd * new Vector2(rb.velocity.normalized.x, 0f) * (-1f));
             }
 
             //MOVEMENT FOR Y
-            if (Mathf.Abs(movement.y) > 0f && Mathf.Abs(rb.velocity.y) <= Mathf.Abs(MaxSpeed * movement.y) / IsometricRatioCoef)
+            if (Mathf.Abs(movement.y) > 0f && Mathf.Abs(rb.velocity.y) <= Mathf.Abs(MaxSpeed * movement.y) / IsometricRatioCoef )
             {
-                if (Mathf.Abs(rb.velocity.y) + (Acceleration * (Time.deltaTime * Time.deltaTime)) > Mathf.Abs(MaxSpeed * movement.y) / IsometricRatioCoef)
+                if (Mathf.Abs(rb.velocity.y) + (Acceleration * (Time.deltaTime * Time.deltaTime)) > Mathf.Abs(MaxSpeed * movement.y) / IsometricRatioCoef )
                 {
                     forceToAdd = 0;
                 }
                 else if (!bothSameDir(movement.y, rb.velocity.y))
                 {
-                    forceToAdd = Acceleration + Deceleration;
+                    forceToAdd = Acceleration;
+                    rb.velocity = new Vector2(rb.velocity.x, -rb.velocity.y);
                 }
                 else
                 {
                     forceToAdd = Acceleration;
                 }
-                rb.AddForce(forceToAdd * new Vector2(0f, movement.y) / IsometricRatioCoef);
+                rb.AddForce(forceToAdd * new Vector2(0f,movement.y) / IsometricRatioCoef);
             }
             else //no input or velocity over max
             {
@@ -136,6 +144,10 @@ public class Movement : MonoBehaviour
                 else
                 {
                     forceToAdd = Deceleration;
+                }
+                if (Mathf.Abs(rb.velocity.y) < 0.2f)
+                {
+                    rb.velocity = new Vector2(rb.velocity.x, 0f);
                 }
                 rb.AddForce(forceToAdd * new Vector2(0f, rb.velocity.normalized.y) * (-1f) / IsometricRatioCoef);
             }
@@ -149,15 +161,17 @@ public class Movement : MonoBehaviour
             {
                 float dashdistance = DashDuration * DashPower / 2;
                 dashBeginPos = transform.position;
+                Debug.Log(dashBeginPos);
                 // MATIIN COLIDER AIR SELAMA DASH
                 dashStart.Invoke();
+
+                rb.AddForce(movement * DashPower * Acceleration);
+
+                //disable deceleration
+                CanMove = false;
+
+                dashGracePeriod = DashDuration;
             }
-
-
-            float dashspeed = Mathf.Sin(ActiveDashDuration / DashDuration * Mathf.PI) * Mathf.Sin(ActiveDashDuration / DashDuration * Mathf.PI) * DashPower;
-            //math, integral utk dapet dash distance
-
-            rb.MovePosition(rb.position + movement * dashspeed * Time.fixedDeltaTime);
 
             //dash duration tick
             ActiveDashDuration += Time.fixedDeltaTime;
@@ -166,24 +180,44 @@ public class Movement : MonoBehaviour
             if (ActiveDashDuration > DashDuration)
             {
                 ActiveDashCD = DashCD;
-                dashEnd.Invoke();
+                //dashEnd.Invoke(); dipindahin ke fall check
 
-                if ((Physics2D.Raycast(transform.position, Vector2.up, 0.1f, LayerMask.GetMask("Water")).collider) != null)
-                {
-                    falltime = startfalltime;
-                    Debug.Log("Drown");
-                    hasFallen = true;
-                }
+                rb.AddForce(rb.velocity.normalized * 0.5f * DashPower * Acceleration * (-1f));
+
+                //reenable deceleration
+                CanMove = true;
+
+                
 
             }
-
+            
         }
-        else
+        else // dash is nolonger active
         {
-            ActiveDashCD -= Time.fixedDeltaTime;
-            //Debug.Log(ActiveDashCD);
-            //Debug.Log(ActiveDashDuration);
-            if (ActiveDashCD <= 0.0f) //END OF DASH
+            //begin dashGracePeriod tickdown
+            if (dashGracePeriod > 0.0f)
+            {
+                dashGracePeriod -= Time.fixedDeltaTime;
+                if (dashGracePeriod <= 0.0f)
+                {
+                    dashGracePeriod = 0.0f;
+
+                    // fall&drown check
+                    if ((Physics2D.Raycast(transform.position, Vector2.up, 0.1f, LayerMask.GetMask("Water")).collider) != null)
+                    {
+                        falltime = startfalltime;
+                        Debug.Log("Drown");
+                        hasFallen = true;
+                        rb.velocity = new Vector2(0f, 0f);
+                    }
+                    dashEnd.Invoke();
+                }
+            }
+            if (ActiveDashCD > 0.0f)
+            {
+                ActiveDashCD -= Time.fixedDeltaTime;
+            }
+            else //(ActiveDashCD <= 0.0f)
             {
                 ActiveDashCD = 0.0f;
                 ActiveDashDuration = 0.0f;
@@ -193,12 +227,12 @@ public class Movement : MonoBehaviour
         //falling
         if (hasFallen)
         {
-
+            
             if (falltime > 0f)
             {
                 CanMove = false;
                 falltime -= Time.deltaTime;
-                if (falltime < 0f)
+                if (falltime <= 0f)
                 {
                     falltime = 0f;
                 }
@@ -208,13 +242,13 @@ public class Movement : MonoBehaviour
             else
             {
                 transform.localScale = originalSize;
-                transform.position = dashBeginPos;
+                transform.position = new Vector3(dashBeginPos.x, dashBeginPos.y,transform.position.z);
                 CanMove = true;
                 hasFallen = false;
             }
-
+            
         }
-
+        
     }
 
 }
